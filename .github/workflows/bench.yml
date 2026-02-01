@@ -1,0 +1,199 @@
+name: Bench threads vs goroutines
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  bench-go:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21.x'
+      - name: Run Go benchmarks
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p bench
+          outfile=bench/go_results.txt
+          run_time() { local label="$1"; shift; { echo "### $label"; /usr/bin/time -f "real %e\nuser %U\nsys %S\nmax_mem_kb %M\n" "$@"; echo; } >> "$outfile" 2>&1; }
+          run_bench() { local label="$1"; shift; echo "## $label" >> "$outfile"; for i in {1..10}; do run_time "$label - run $i" "$@"; done; }
+          go build -o go_sleep go_sleep.go
+          go build -o go_cpu go_cpu.go
+          run_bench "Go goroutines sleep" ./go_sleep
+          run_bench "Go goroutines CPU" ./go_cpu
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-go
+          path: bench/go_results.txt
+
+  bench-java-os:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - name: Run Java OS threads benchmarks
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p bench
+          outfile=bench/java_os_results.txt
+          run_time() { local label="$1"; shift; { echo "### $label"; /usr/bin/time -f "real %e\nuser %U\nsys %S\nmax_mem_kb %M\n" "$@"; echo; } >> "$outfile" 2>&1; }
+          run_bench() { local label="$1"; shift; echo "## $label" >> "$outfile"; for i in {1..10}; do run_time "$label - run $i" "$@"; done; }
+          javac JavaThreadsSleep.java
+          run_bench "Java OS threads sleep" java JavaThreadsSleep
+          javac JavaThreadsCPU.java
+          run_bench "Java OS threads CPU" java JavaThreadsCPU
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-java-os
+          path: bench/java_os_results.txt
+
+  bench-java-virtual:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - name: Run Java virtual threads benchmarks
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p bench
+          outfile=bench/java_virtual_results.txt
+          run_time() { local label="$1"; shift; { echo "### $label"; /usr/bin/time -f "real %e\nuser %U\nsys %S\nmax_mem_kb %M\n" "$@"; echo; } >> "$outfile" 2>&1; }
+          run_bench() { local label="$1"; shift; echo "## $label" >> "$outfile"; for i in {1..10}; do run_time "$label - run $i" "$@"; done; }
+          javac JavaVirtualThreadsSleep.java
+          run_bench "Java virtual threads sleep" java JavaVirtualThreadsSleep
+          javac JavaVirtualThreadsCPU.java
+          run_bench "Java virtual threads CPU" java JavaVirtualThreadsCPU
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-java-virtual
+          path: bench/java_virtual_results.txt
+
+  bench-python:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run Python benchmarks
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p bench
+          outfile=bench/python_results.txt
+          run_time() { local label="$1"; shift; { echo "### $label"; /usr/bin/time -f "real %e\nuser %U\nsys %S\nmax_mem_kb %M\n" "$@"; echo; } >> "$outfile" 2>&1; }
+          run_bench() { local label="$1"; shift; echo "## $label" >> "$outfile"; for i in {1..10}; do run_time "$label - run $i" "$@"; done; }
+          run_bench "Python asyncio sleep" python3 python_sleep.py
+          run_bench "Python asyncio CPU" python3 python_cpu.py
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-python
+          path: bench/python_results.txt
+
+  bench-kotlin:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Set up Kotlin
+        uses: fwilhe2/setup-kotlin@main
+        with:
+          version: 1.9.21
+      - name: Run Kotlin benchmarks
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p bench
+          outfile=bench/kotlin_results.txt
+          run_time() { local label="$1"; shift; { echo "### $label"; /usr/bin/time -f "real %e\nuser %U\nsys %S\nmax_mem_kb %M\n" "$@"; echo; } >> "$outfile" 2>&1; }
+          run_bench() { local label="$1"; shift; echo "## $label" >> "$outfile"; for i in {1..10}; do run_time "$label - run $i" "$@"; done; }
+          
+          mkdir -p lib
+          COROUTINES_VERSION="1.9.0"
+          curl -L -o lib/kotlinx-coroutines-core-jvm.jar https://repo1.maven.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core-jvm/$COROUTINES_VERSION/kotlinx-coroutines-core-jvm-$COROUTINES_VERSION.jar
+          
+          kotlinc -cp lib/kotlinx-coroutines-core-jvm.jar KotlinSleep.kt -include-runtime -d KotlinSleep.jar
+          run_bench "Kotlin coroutines sleep" java -cp KotlinSleep.jar:lib/kotlinx-coroutines-core-jvm.jar KotlinSleepKt
+          
+          kotlinc -cp lib/kotlinx-coroutines-core-jvm.jar KotlinCpu.kt -include-runtime -d KotlinCpu.jar
+          run_bench "Kotlin coroutines CPU" java -cp KotlinCpu.jar:lib/kotlinx-coroutines-core-jvm.jar KotlinCpuKt
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-kotlin
+          path: bench/kotlin_results.txt
+
+  report:
+    runs-on: ubuntu-latest
+    needs: [bench-go, bench-java-os, bench-java-virtual, bench-python, bench-kotlin]
+    steps:
+      - name: Download Go results
+        uses: actions/download-artifact@v4
+        with:
+          name: bench-go
+          path: results
+      - name: Download Java OS results
+        uses: actions/download-artifact@v4
+        with:
+          name: bench-java-os
+          path: results
+      - name: Download Java Virtual results
+        uses: actions/download-artifact@v4
+        with:
+          name: bench-java-virtual
+          path: results
+      - name: Download Python results
+        uses: actions/download-artifact@v4
+        with:
+          name: bench-python
+          path: results
+      - name: Download Kotlin results
+        uses: actions/download-artifact@v4
+        with:
+          name: bench-kotlin
+          path: results
+      - name: Aggregate Results
+        shell: bash
+        run: |
+          echo "Bench run on $(date -u)" > results.txt
+          echo >> results.txt
+          cat results/go_results.txt >> results.txt
+          cat results/java_os_results.txt >> results.txt
+          cat results/java_virtual_results.txt >> results.txt
+          cat results/python_results.txt >> results.txt
+          cat results/kotlin_results.txt >> results.txt
+          cat results.txt
+      - name: Upload Aggregate results
+        uses: actions/upload-artifact@v4
+        with:
+          name: all-bench-results
+          path: results.txt
