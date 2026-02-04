@@ -10,6 +10,7 @@ fun main() = runBlocking {
                 for (i in 0 until 1_000_000) {
                     sum += i
                 }
+                if (sum == -1L) println(sum) // Prevent DCE
             }
         }
         jobs.forEach { it.join() }
